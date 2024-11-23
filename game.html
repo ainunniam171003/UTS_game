@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>TOM and JERRY- Game</title>
+    <style>
+      #gameCanvas {
+        border: 2px solid black;
+        background: #f0f0f0;
+      }
+      .container {
+        text-align: center;
+        font-family: Arial, sans-serif;
+      }
+      #score,
+      #timeLeft {
+        font-size: 24px;
+        margin: 10px;
+      }
+      #gameOver {
+        display: none;
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: rgba(0, 0, 0, 0.8);
+        color: white;
+        padding: 20px;
+        border-radius: 10px;
+        text-align: center;
+      }
+      button {
+        padding: 10px 20px;
+        font-size: 16px;
+        margin-top: 10px;
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>Tom and Jerry</h1>
+      <div id="score">Skor: 0</div>
+      <div id="timeLeft">Waktu: 45</div>
+      <canvas id="gameCanvas" width="600" height="400"></canvas>
+      <p>
+        Gunakan mouse untuk mengendalikan kucing mengejar tikus! Hindari
+        rintangan!
+      </p>
+    </div>
+    <div id="gameOver">
+      <h2>Game Over!</h2>
+      <p>Skor Akhir: <span id="finalScore">0</span></p>
+      <p id="gameOverReason"></p>
+      <button onclick="restartGame()">Main Lagi</button>
+    </div>
+
+    <!-- Menambahkan elemen audio untuk efek suara -->
+    <audio id="catchSound" src="Some Hand grab Sound effect.mp3"></audio>
+    <audio id="hitSound" src="Game Over.mp3"></audio>
+    <audio id="gameOverSound" src="Game Over.mp3"></audio>
+    <audio id="chaseSound" src="tom and jerry.mp3"></audio>
+
+    <script>
+      const canvas = document.getElementById("gameCanvas");
+      const ctx = canvas.getContext("2d");
+      const scoreElement = document.getElementById("score");
+      const timeLeftElement = document.getElementById("timeLeft");
+      const gameOverElement = document.getElementById("gameOver");
+      const gameOverReasonElement = document.getElementById("gameOverReason");
+      const chaseSound = document.getElementById("chaseSound");
+      chaseSound.volume = 0.3; // Set volume ke 30%
+
+      let score = 0;
+      let timeLeft = 45;
+      let mouseX = canvas.width / 2;
+      let mouseY = canvas.height / 2;
+      let isGameOver = false;
+      let isChasing = false;
+      let lastMouseX = mouseX;
+      let lastMouseY = mouseY;
+
+      const obstacles = [];
+      const teleportPoints = [];
+
+      function generateObstacles() {
+        obstacles.length = 0;
+        teleportPoints.length = 0;
+
+        // Reduced number of obstacles from 5 to 3
+        for (let i = 0; i < 3; i++) {
+          obstacles.push({
+            x: Math.random() * (canvas.width - 60) + 30,
+            y: Math.random() * (canvas.height - 60) + 30,
+            width: Math.random() * 30 + 40,
+            height: Math.random() * 30 + 40,
+          });
+        }
+
+        for (let i = 0; i < 3; i++) {
+          teleportPoints.push({
+            x: Math.random() * (canvas.width - 30),
+            y: Math.random() * (canvas.height - 30),
+            radius: 15,
+          });
+        }
+      }
+
+      const catImg = new Image();
+      catImg.src =
+        "data:image/svg+xml," +
+        encodeURIComponent(`
+          <svg width="50" height="40" viewBox="0 0 50 40" xmlns="http://www.w3.org/2000/svg">
+              <!-- Body -->
+              <ellipse cx="25" cy="25" rx="20" ry="12" fill="#F4A460"/>
+
+              <!-- Head -->
+              <circle cx="42" cy="22" r="8" fill="#F4A460"/>
+
+              <!-- Ears -->
+              <path d="M37 16 L40 12 L43 16 Z" fill="#F4A460"/>
+              <path d="M41 16 L44 12 L47 16 Z" fill="#F4A460"/>
+              <path d="M38 15.5 L40.5 13 L42 15.5 Z" fill="#FFA07A"/>
+              <path d="M42 15.5 L44.5 13 L46 15.5 Z" fill="#FFA07A"/>
+
+              <!-- Face -->
+              <circle cx="44" cy="21" r="1.5" fill="black"/> <!-- Right eye -->
+              <circle cx="40" cy="21" r="1.5" fill="black"/> <!-- Left eye -->
+              <path d="M42 23 L43 24 L41 24 Z" fill="pink"/> <!-- Nose -->
+
+              <!-- Whiskers -->
+              <line x1="43" y1="24" x2="48" y2="23" stroke="white" stroke-width="0.5"/>
+              <line x1="43" y1="24" x2="48" y2="24" stroke="white" stroke-width="0.5"/>
+              <line x1="43" y1="24" x2="48" y2="25" stroke="white" stroke-width="0.5"/>
+              <line x1="41" y1="24" x2="36" y2="23" stroke="white" stroke-width="0.5"/>
+              <line x1="41" y1="24" x2="36" y2="24" stroke="white" stroke-width="0.5"/>
+              <line x1="41" y1="24" x2="36" y2="25" stroke="white" stroke-width="0.5"/>
+
+              <!-- Legs -->
+              <path d="M15 32 L18 37 L20 32" fill="#F4A460"/> <!-- Back leg -->
+              <path d="M30 32 L33 37 L35 32" fill="#F4A460"/> <!-- Front leg -->
+
+              <!-- Tail -->
+              <path d="M5 25 Q 0 20 3 15" stroke="#F4A460" stroke-width="3" fill="none"/>
+          </svg>
+      `);
+
+      const mouseImg = new Image();
+      mouseImg.src =
+        "data:image/svg+xml," +
+        encodeURIComponent(`
+          <svg width="30" height="30" viewBox="0 0 30 30" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="15" cy="15" r="10" fill="#AAA"/>
+              <circle cx="20" cy="12" r="5" fill="#AAA"/>
+              <circle cx="22" cy="10" r="1" fill="black"/>
+              <path d="M23 12 L25 11" stroke="black" stroke-width="1"/>
+              <path d="M5 15 L0 10" stroke="#AAA" stroke-width="2"/>
+              <circle cx="23" cy="8" r="3" fill="#FFB6C1"/>
+          </svg>
+      `);
+
+      const target = {
+        x: Math.random() * (canvas.width - 30),
+        y: Math.random() * (canvas.height - 30),
+        size: 15,
+        baseSpeed: 3,
+        dashCooldown: 2000,
+        lastDashTime: 0,
+        isDashing: false,
+        lastTeleportTime: 0,
+        teleportCooldown: 3000,
+      };
+
+      function calculateDistance(x1, y1, x2, y2) {
+        return Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
+      }
+
+      function fuzzyDistance(distance) {
+        if (distance < 100) return { close: 1, medium: 0, far: 0 };
+        if (distance < 200) return { close: 0.5, medium: 0.5, far: 0 };
+        if (distance < 300) return { close: 0, medium: 0.7, far: 0.3 };
+        return { close: 0, medium: 0.3, far: 0.7 };
+      }
+
+      function defuzzify(fuzzyValues) {
+        const speedMultiplier =
+          fuzzyValues.close * 2.5 +
+          fuzzyValues.medium * 2 +
+          fuzzyValues.far * 1.5;
+
+        return (
+          speedMultiplier /
+          (fuzzyValues.close + fuzzyValues.medium + fuzzyValues.far)
+        );
+      }
+
+      function checkCollision(x, y, rect) {
+        const playerSize = 15;
+        return (
+          x + playerSize > rect.x &&
+          x - playerSize < rect.x + rect.width &&
+          y + playerSize > rect.y &&
+          y - playerSize < rect.y + rect.height
+        );
+      }
+
+      function checkPlayerObstacleCollision(x, y) {
+        for (let obstacle of obstacles) {
+          if (checkCollision(x, y, obstacle)) {
+            return true;
+          }
+        }
+        return false;
+      }
+
+      function getRandomDirection() {
+        return Math.random() * Math.PI * 2;
+      }
+
+      canvas.addEventListener("mousemove", (e) => {
+        if (!isGameOver) {
+          const rect = canvas.getBoundingClientRect();
+          const newX = e.clientX - rect.left;
+          const newY = e.clientY - rect.top;
+
+          // Cek apakah kucing bergerak
+          if (Math.abs(newX - lastMouseX) > 0.1 || Math.abs(newY - lastMouseY) > 0.1) {
+            if (!isChasing) {
+              isChasing = true;
+              chaseSound.play().catch(console.error);
+            }
+          } else {
+            if (isChasing) {
+              isChasing = false;
+              chaseSound.pause();
+            }
+          }
+
+          if (checkPlayerObstacleCollision(newX, newY)) {
+            const hitSound = document.getElementById("hitSound");
+            hitSound.play().catch(console.error);
+            chaseSound.pause(); // Hentikan suara chase
+            isChasing = false;
+            endGame("Menabrak rintangan!");
+          } else {
+            mouseX = newX;
+            mouseY = newY;
+          }
+
+          lastMouseX = newX;
+          lastMouseY = newY;
+        }
+      });
+
+      function moveTarget() {
+        const distance = calculateDistance(mouseX, mouseY, target.x, target.y);
+        const fuzzyValues = fuzzyDistance(distance);
+        const speedMultiplier = defuzzify(fuzzyValues);
+        const currentTime = Date.now();
+
+        if (
+          distance < 150 &&
+          currentTime - target.lastDashTime > target.dashCooldown
+        ) {
+          target.isDashing = true;
+          target.lastDashTime = currentTime;
+          setTimeout(() => {
+            target.isDashing = false;
+          }, 500);
+        }
+
+        if (
+          distance < 100 &&
+          currentTime - target.lastTeleportTime > target.teleportCooldown
+        ) {
+          const teleportPoint =
+            teleportPoints[Math.floor(Math.random() * teleportPoints.length)];
+          target.x = teleportPoint.x;
+          target.y = teleportPoint.y;
+          target.lastTeleportTime = currentTime;
+          return;
+        }
+
+        let actualSpeed = target.baseSpeed * speedMultiplier;
+        if (target.isDashing) {
+          actualSpeed *= 3;
+        }
+
+        let angle;
+        if (distance > 300) {
+          angle = getRandomDirection();
+        } else {
+          angle = Math.atan2(mouseY - target.y, mouseX - target.x);
+          angle += ((Math.random() - 0.5) * Math.PI) / 4;
+        }
+
+        let newX = target.x - Math.cos(angle) * actualSpeed;
+        let newY = target.y - Math.sin(angle) * actualSpeed;
+
+        let canMove = true;
+        obstacles.forEach((obstacle) => {
+          if (checkCollision(newX, newY, obstacle)) {
+            canMove = false;
+          }
+        });
+
+        if (canMove) {
+          target.x = Math.max(
+            target.size,
+            Math.min(canvas.width - target.size, newX)
+          );
+          target.y = Math.max(
+            target.size,
+            Math.min(canvas.height - target.size, newY)
+          );
+        } else {
+          angle = getRandomDirection();
+          target.x -= Math.cos(angle) * actualSpeed;
+          target.y -= Math.sin(angle) * actualSpeed;
+        }
+
+        if (distance < target.size + 15) {
+          const catchSound = document.getElementById("catchSound");
+          catchSound.play().catch(console.error); // Memutar suara menangkap tikus
+          score++;
+          scoreElement.textContent = `Skor: ${score}`;
+          target.x = Math.random() * (canvas.width - target.size * 2);
+          target.y = Math.random() * (canvas.height - target.size * 2);
+          target.isDashing = false;
+          generateObstacles();
+        }
+      }
+
+      function drawGame() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        ctx.fillStyle = "#8B4513";
+        obstacles.forEach((obstacle) => {
+          ctx.fillRect(obstacle.x, obstacle.y, obstacle.width, obstacle.height);
+        });
+
+        teleportPoints.forEach((point) => {
+          ctx.beginPath();
+          ctx.arc(point.x, point.y, point.radius, 0, Math.PI * 2);
+          ctx.fillStyle = "rgba(147, 112, 219, 0.5)";
+          ctx.fill();
+          ctx.strokeStyle = "purple";
+          ctx.stroke();
+        });
+
+        if (target.isDashing) {
+          ctx.globalAlpha = 0.5;
+          ctx.drawImage(mouseImg, target.x - 20, target.y - 20, 40, 40);
+          ctx.globalAlpha = 1;
+        }
+        ctx.drawImage(mouseImg, target.x - 15, target.y - 15, 30, 30);
+
+        // Calculate angle to make cat face direction of movement
+        const angle = Math.atan2(mouseY - target.y, mouseX - target.x);
+
+        ctx.save();
+        ctx.translate(mouseX, mouseY);
+        if (mouseX < target.x) {
+          ctx.scale(-1, 1);
+        }
+        ctx.drawImage(catImg, -25, -20, 50, 40);
+        ctx.restore();
+      }
+
+      function updateTimer() {
+        if (!isGameOver && timeLeft > 0) {
+          timeLeft--;
+          timeLeftElement.textContent =` Waktu: ${timeLeft}`;
+          if (timeLeft === 0) {
+            endGame("Waktu habis!");
+          }
+        }
+      }
+
+      function endGame(reason = "") {
+        const gameOverSound = document.getElementById("gameOverSound");
+        gameOverSound.play().catch(console.error);
+        chaseSound.pause(); // Hentikan suara chase saat game over
+        isChasing = false;
+        isGameOver = true;
+        gameOverElement.style.display = "block";
+        document.getElementById("finalScore").textContent = score;
+        gameOverReasonElement.textContent = reason;
+      }
+
+      function restartGame() {
+        score = 0;
+        timeLeft = 45;
+        isGameOver = false;
+        isChasing = false;
+        scoreElement.textContent = "Skor: 0";
+        timeLeftElement.textContent = "Waktu: 45";
+        gameOverElement.style.display = "none";
+        mouseX = canvas.width / 2;
+        mouseY = canvas.height / 2;
+        lastMouseX = mouseX;
+        lastMouseY = mouseY;
+        target.x = Math.random() * (canvas.width - 30);
+        target.y = Math.random() * (canvas.height - 30);
+        generateObstacles();
+      }
+
+      function gameLoop() {
+        if (!isGameOver) {
+          moveTarget();
+          drawGame();
+        }
+        requestAnimationFrame(gameLoop);
+      }
+
+      generateObstacles();
+      setInterval(updateTimer, 1000);
+      gameLoop();
+    </script>
+  </body>
+</html>
